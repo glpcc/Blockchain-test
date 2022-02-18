@@ -11,29 +11,28 @@ class Node():
 		self.__peers : list[Node] = peers
 		self.__listen : bool = True
 
-	def send_to_all_peers(self):
-		def talk_to_peer(peer: Node,msg: bytes):
-			sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-			## Connect
-			sock.connect((peer.ip, peer.port))
-			## Send some data, this method can be called multiple times
-			sock.send(msg)
-
-			## Receive up to 4096 bytes from a peer
-			# response = sock.recv(4096)
-			# print(response)
-			sock.close()
-
+	def send_to_all_peers(self,msg: bytes):
+		# TODO consider adding threading here if posible
 		for peer in self.__peers:
-			message = f'Hola soy el nodo en el puerto {self.port}'
-			talk_to_peer(peer,bytes(message,'utf-8'))
+			self.send_to_peer(peer,msg)
 
-		
+	def send_to_peer(self,peer: Node,msg: bytes):
+		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		sock.connect((peer.ip, peer.port))
+		sock.send(msg)
+		## Receive up to 4096 bytes from a peer
+		# response = sock.recv(4096)
+		# print(response)
+
+		sock.close()
+
+
+
 	def listen_to_messages(self):
 		self.serv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		self.serv.bind((self.ip, self.port))
 		self.serv.listen()
-		self.serv.settimeout(10)
+		self.serv.settimeout(5)
 		while self.listen:
 			try:
 				conn, addr = self.serv.accept()

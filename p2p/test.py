@@ -11,8 +11,8 @@ threading.Thread(target=nodes[0].listen_to_messages, args=()).start()
 threading.Thread(target=nodes[1].listen_to_messages, args=()).start()
 threading.Thread(target=nodes[2].listen_to_messages, args=()).start()
 
-nodes[0].send_to_all_peers()
-nodes[2].send_to_all_peers()
+nodes[0].send_to_all_peers(b'holaa')
+nodes[2].send_to_all_peers(b'adiosss')
 
 for i in nodes:
 	i.stop()
