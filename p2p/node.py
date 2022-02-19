@@ -1,32 +1,41 @@
 from __future__ import annotations
-from email import message
 import socket
+import pickle
 import threading
+import time
+from message import	Message
 
 class Node():
-	def __init__(self,ip: str, port: int,peers: list[Node]) -> None:
+	def __init__(self, ip: str, port: int, peers: list[tuple[str,int]]) -> None:
 		self.__ip = ip
 		self.__port = port
 		# Here you would connect to a central server to get all peers
-		self.__peers : list[Node] = peers
-		self.__listen : bool = True
+		self.__peers: list[tuple[str,int]] = peers
+		self.__listen: bool = True
+		self.__recent_data = []
 
-	def send_to_all_peers(self,msg: bytes):
+	def send_to_all_peers(self, msg: bytes):
 		# TODO consider adding threading here if posible
 		for peer in self.__peers:
-			self.send_to_peer(peer,msg)
+			self.send_to_peer(peer, msg)
 
-	def send_to_peer(self,peer: Node,msg: bytes):
+	def send_to_peer(self, peer: tuple[str,int], msg: bytes):
 		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		sock.connect((peer.ip, peer.port))
+		sock.connect((peer[0], peer[1]))
 		sock.send(msg)
-		## Receive up to 4096 bytes from a peer
+		# Receive up to 4096 bytes from a peer
 		# response = sock.recv(4096)
 		# print(response)
 
 		sock.close()
 
-
+	def get_main_blockchain(self):
+		self.send_to_all_peers(pickle.dumps(Message('request_blockchain','',self.__port)))
+		while len(self.__recent_data) != len(self.__peers):
+			time.sleep(0.5)
+		
+		# test
+		print(self.__recent_data)
 
 	def listen_to_messages(self):
 		self.serv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -36,16 +45,25 @@ class Node():
 		while self.listen:
 			try:
 				conn, addr = self.serv.accept()
-				from_client = b''
+				raw_data: bytes = bytes()
 				while True:
 					data = conn.recv(4096)
 					if not data: break
-					from_client += data
-					print(f'Server on port {self.port} received message: {str(from_client)}')
-					# conn.send(b"I am SERVER\n")
-					
+					raw_data += data
+				message = pickle.loads(raw_data)
+				if message.command == 'test':
+					print(message.sender)
+					print(message.data.a)
+				elif message.command == 'request_blockchain':
+					msg = f'Blockchain del nodo en el puerto {self.__port}'
+					print(addr)
+					self.send_to_peer((addr[0],message.sender),pickle.dumps(Message('response',msg.encode('utf-8'),self.__port)))
+				elif message.command == 'response':
+					self.__recent_data += [message.data]
 				conn.close()
 			except TimeoutError:
+				pass
+			except socket.timeout:
 				pass
 		print(f'Server on port {self.port} stoped listening')
 
@@ -68,7 +86,7 @@ class Node():
 		return self.__listen 
 
 	@property
-	def peers(self)-> list[Node]:
+	def peers(self)-> list[tuple[str,int]]:
 		return self.__peers
 	
 	@peers.setter
