@@ -1,4 +1,6 @@
+import hashlib
 import json
+import random
 import socket
 
 HEADER_LENGTH = 10
@@ -10,13 +12,41 @@ class Node():
 		self.__port : int = port
 		self.__peer_server = ('localhost',4000)
 		self.__peers : list[tuple[str,int]] = []
+		# here you could ask the peers for other peers
 		self.get_peers()
 		self.__stay_listening = True
-		self.__MSG_COMMANDS = {
+		self.__blockchain = {
+			'blocks':[
+				{
+					'prev_block_hash': '8cf2283ad6ef0a3266059b418a73f8479338233ea2c4bcd3c1f51c39f13ae7dc',
+					'timestamp': 1645553097,
+					'merkle_tree_hash':'9ca54f1c7764f74c1a1b7b75e2f92726a3506d42380e37310788f5b1721684e0',
+					'extra_stuff': '0000000000',
+				},
+			]
 
 		}
+		self.__MSG_COMMANDS = {
+			'request_blockchain':self.send_blockchain
+		}
 
-	def encode_msg(self,data: dict)-> bytes:
+	def get_block_hash(self,block: dict):
+		return hashlib.sha256((block['prev_block_hash']+ str(block['timestamp']) + block['merkle_tree_hash'] + str(block['extra_stuff'])).encode('utf-8')).hexdigest()
+
+	def send_blockchain(self,block_header_hash):
+		for i in range(len(self.__blockchain['blocks'])):
+			if self.get_block_hash(self.__blockchain['blocks'][i]) == block_header_hash:
+				print(i)
+				return {'blocks': self.__blockchain['blocks'][i+1:]}
+		return self.__blockchain
+
+	def request_blockchain(self):
+		chosen_peer = random.choice(self.__peers)
+		print(chosen_peer)
+		temp_blockchain = self.send({'command':'request_blockchain','data':self.get_block_hash(self.__blockchain['blocks'][-1])},tuple(chosen_peer))
+		print(temp_blockchain)
+
+	def encode_msg(self,data)-> bytes:
 		encoded_data = json.dumps(data)
 		length = len(encoded_data)
 		header = '0'*(HEADER_LENGTH-len(str(length)))+str(length)
@@ -38,19 +68,35 @@ class Node():
 		self.__peers += [ i for i in self.send({'command':'request_peers','data':'','sender':(self.__hostname,self.__port)},self.__peer_server)['data'] if not i in self.__peers and i != [self.__hostname,self.__port]]
 
 	def listen(self):
-		HEADER_LENGTH = 10
+		
 		s = socket.socket()
 		s.bind(('', self.__port))
-		s.listen(5) 
-		while True:
-			c, addr = s.accept()
-			msg_lenght = int(c.recv(HEADER_LENGTH).decode('utf-8'))
-			msg = c.recv(msg_lenght)
-			print(json.loads(msg))
-			c.send('Thank ou for connecting'.encode())
-			c.close()
-			break
+		s.listen(5)
+		s.settimeout(5)
+		while self.__stay_listening:
+			try:
+				c, addr = s.accept()
+				msg_lenght = int(c.recv(HEADER_LENGTH).decode('utf-8'))
+				msg = c.recv(msg_lenght)
+				msg = json.loads(msg)
+				c.send(self.encode_msg(self.__MSG_COMMANDS[msg['command']](msg['data'])))
+				c.close()
+			except socket.timeout:
+				pass
+
+	def stop(self):
+		self.__stay_listening = False
+
 
 	@property 
 	def peers(self):
 		return self.__peers
+
+	#TODO remove
+	@property
+	def blockchain(self):
+		return self.__blockchain
+	
+	@blockchain.setter
+	def blockchain(self,blockchai):
+		self.__blockchain = blockchai
