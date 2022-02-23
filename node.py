@@ -13,7 +13,10 @@ class Node():
 		self.__peer_server = ('localhost',4000)
 		self.__peers : list[tuple[str,int]] = []
 		# here you could ask the peers for other peers
-		self.get_peers()
+		try:
+			self.get_peers()
+		except:
+			print('The connection to the peer server wasnt possible')
 		self.__stay_listening = True
 		self.__blockchain = {
 			'blocks':[
@@ -26,7 +29,7 @@ class Node():
 			]
 
 		}
-		self.__MSG_COMMANDS = {
+		self.__msg_commands = {
 			'request_blockchain':self.send_blockchain
 		}
 
@@ -79,7 +82,7 @@ class Node():
 				msg_lenght = int(c.recv(HEADER_LENGTH).decode('utf-8'))
 				msg = c.recv(msg_lenght)
 				msg = json.loads(msg)
-				c.send(self.encode_msg(self.__MSG_COMMANDS[msg['command']](msg['data'])))
+				c.send(self.encode_msg(self.__msg_commands[msg['command']](msg['data'])))
 				c.close()
 			except socket.timeout:
 				pass
@@ -91,6 +94,10 @@ class Node():
 	@property 
 	def peers(self):
 		return self.__peers
+
+	@property
+	def msg_commands(self):
+		return self.__msg_commands
 
 	#TODO remove
 	@property
