@@ -10,6 +10,7 @@ class Peer_server():
 		self.__port : int = 4000
 		self.__stay_listening = True
 		self.__node_list = []
+		self.__miners_list = []
 	
 	def encode_msg(self,data: dict)-> bytes:
 		encoded_data = json.dumps(data)
@@ -32,10 +33,18 @@ class Peer_server():
 				if msg['command'] == 'request_peers':
 					if not msg['sender'] in self.__node_list:
 						self.__node_list += [msg['sender']]
-					c.send(self.encode_msg({'data':self.__node_list}))
+					c.send(self.encode_msg({'data':(self.__miners_list,self.__node_list)}))
 				c.close()
 			except socket.timeout:
 				pass
 
 	def stop(self):
 		self.__stay_listening = False
+	
+	@property
+	def miners_list(self):
+		return self.__miners_list
+	
+	@miners_list.setter
+	def miners_list(self,l):
+		self.__miners_list = l

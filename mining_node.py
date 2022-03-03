@@ -6,19 +6,23 @@ import json
 
 class MiningNode(Node):
 	def __init__(self, hostname: str = 'localhost', port: int = 5555) -> None:
-		super().__init__(hostname, port)
+		super().__init__(hostname,port,False)
 		self.miner_msg_commands = {
 			'new_transaction': self.store_transaction
 		}
 		self.__recent_transactions = []
-		self.miner_msg_commands.update(self.msg_commands)
 		self.__mining_difficulty = 4
-	
-	def store_transaction(self,transaction):
+		self.msg_commands.update(self.miner_msg_commands)
+
+
+	def store_transaction(self,args):
+		transaction = args[0]
 		self.__recent_transactions += [transaction]
 		if len(self.__recent_transactions) >= 10:
 			print(json.dumps(self.mine_block(), indent=4))
-		
+
+		return b'ok'
+
 	def mine_block(self) -> dict:
 		timestamp = str(time())
 		transactions_hash = self.hash_transactions()

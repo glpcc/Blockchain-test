@@ -1,20 +1,26 @@
+from __future__ import annotations
+
+import rsa
 import hashlib
 import json
 import random
 import socket
 
+from errors.signature_failure import Signature_failure
 HEADER_LENGTH = 10
 
 class Node():
-	def __init__(self,hostname: str = 'localhost',port: int = 5555) -> None:
+	def __init__(self,hostname: str = 'localhost',port: int = 5555,try_peers = True) -> None:
 		#Here you would get the public ip addres
 		self.__hostname : str = hostname
 		self.__port : int = port
 		self.__peer_server = ('localhost',4000)
 		self.__peers : list[tuple[str,int]] = []
+		self.__mining_nodes : list[tuple[str,int]] = []
 		# here you could ask the peers for other peers
 		try:
-			self.get_peers()
+			if try_peers:
+				self.get_peers()
 		except:
 			print('The connection to the peer server wasnt possible')
 		self.__stay_listening = True
@@ -30,13 +36,18 @@ class Node():
 
 		}
 		self.__msg_commands = {
-			'request_blockchain':self.send_blockchain
+			'request_blockchain':self.send_blockchain,
+			'request_signature': self.sign_transaction
 		}
+		
+		# Generate public key and private key for validating transactions
+		self.__public_key, self.__private_key = rsa.newkeys(512)
 
 	def get_block_hash(self,block: dict):
 		return hashlib.sha256((block['prev_block_hash']+ str(block['timestamp']) + block['merkle_tree_hash'] + str(block['extra_stuff'])).encode('utf-8')).hexdigest()
 
-	def send_blockchain(self,block_header_hash):
+	def send_blockchain(self,args):
+		block_header_hash = args[0]
 		for i in range(len(self.__blockchain['blocks'])):
 			if self.get_block_hash(self.__blockchain['blocks'][i]) == block_header_hash:
 				print(i)
@@ -46,7 +57,7 @@ class Node():
 	def request_blockchain(self):
 		chosen_peer = random.choice(self.__peers)
 		print(chosen_peer)
-		temp_blockchain = self.send({'command':'request_blockchain','data':self.get_block_hash(self.__blockchain['blocks'][-1])},tuple(chosen_peer))
+		temp_blockchain = self.send({'command':'request_blockchain','data':(self.get_block_hash(self.__blockchain['blocks'][-1]))},tuple(chosen_peer))
 		print(temp_blockchain)
 
 	def encode_msg(self,data)-> bytes:
@@ -66,12 +77,48 @@ class Node():
 		s.close()
 		return msg
 
+	def sign(self,data :bytes) -> bytes:
+		return rsa.sign(data,self.__private_key,'SHA-256')
 
+	def new_transaction(self,other_peers_implicated : list[tuple[str, int]],transaction: str):
+		encrypted_hash = self.sign(transaction.encode('utf-8')).hex()
+		# Now send the encrypted hash to all other nodes implied in transaction for signing
+		for node in other_peers_implicated:
+			data = {
+				'command':'request_signature',
+				'data':(transaction,encrypted_hash)
+			}
+			encrypted_hash = self.send(data,node)['data']
+			if encrypted_hash == 'no':
+				raise Signature_failure('One of the nodes refused to sign the transaction')
+		
+		data_to_send = {
+			'command':'new_transaction',
+			'data':({
+				'hash':encrypted_hash,
+				'transaction':transaction
+			})
+		}
+		for i in self.__mining_nodes:
+			self.send(data_to_send,i)
+		
 	def get_peers(self):
-		self.__peers += [ i for i in self.send({'command':'request_peers','data':'','sender':(self.__hostname,self.__port)},self.__peer_server)['data'] if not i in self.__peers and i != [self.__hostname,self.__port]]
+		mining_nodes, peers = self.send({'command':'request_peers','data':'','sender':(self.__hostname,self.__port)},self.__peer_server)['data']
+		self.__peers += [ i for i in peers if not i in self.__peers and i != [self.__hostname,self.__port]]
+		self.__mining_nodes += [tuple(i) for i in mining_nodes if not tuple(i) in self.__mining_nodes]
+
+	def sign_transaction(self,args):
+		transaction : str = args[0]
+		encrypted_transaction : str = args[1]
+		rs = input(f'Do you want to sign this transaction: {transaction} \n (y/n):')
+		if rs == 'y':
+			return {'data':self.sign(encrypted_transaction.encode('utf-8')).hex()}
+		else:
+			return {'data':'no'}
+
 
 	def listen(self):
-		
+		print(f'Node in port {self.__port} started listening')
 		s = socket.socket()
 		s.bind(('', self.__port))
 		s.listen(5)
@@ -94,6 +141,10 @@ class Node():
 	@property 
 	def peers(self):
 		return self.__peers
+	
+	@property 
+	def mining_nodes(self):
+		return self.__mining_nodes
 
 	@property
 	def msg_commands(self):
@@ -104,6 +155,9 @@ class Node():
 	def blockchain(self):
 		return self.__blockchain
 	
+	@msg_commands.setter
+	def msg_commands(self,cmd):
+		self.__msg_commands = cmd
 	@blockchain.setter
 	def blockchain(self,blockchai):
 		self.__blockchain = blockchai
