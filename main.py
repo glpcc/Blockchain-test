@@ -29,8 +29,10 @@ threading.Thread(target=miner.listen).start()
 for i in range(10):
 	node1.new_transaction([('localhost',5000)],f'Transaccion numero {i}')
 
+
 node1.stop()
 node2.stop()
 server.stop()
+miner.stop()
 
 

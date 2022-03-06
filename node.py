@@ -37,11 +37,17 @@ class Node():
 		}
 		self.__msg_commands = {
 			'request_blockchain':self.send_blockchain,
-			'request_signature': self.sign_transaction
+			'request_signature': self.sign_transaction,
+			'request_publickey': self.send_publickey,
 		}
 		
 		# Generate public key and private key for validating transactions
 		self.__public_key, self.__private_key = rsa.newkeys(512)
+
+
+	def send_publickey(self,args):
+		return self.__public_key.save_pkcs1().decode('utf-8')
+
 
 	def get_block_hash(self,block: dict):
 		return hashlib.sha256((block['prev_block_hash']+ str(block['timestamp']) + block['merkle_tree_hash'] + str(block['extra_stuff'])).encode('utf-8')).hexdigest()
@@ -81,23 +87,27 @@ class Node():
 		return rsa.sign(data,self.__private_key,'SHA-256')
 
 	def new_transaction(self,other_peers_implicated : list[tuple[str, int]],transaction: str):
-		encrypted_hash = self.sign(transaction.encode('utf-8')).hex()
+
+		final_transaction = {
+			'transaction':transaction,
+			'hash':hashlib.sha256(transaction.encode('utf-8')).hexdigest(),
+			'signatures':[]
+		}
+		final_transaction['signatures'] += [{'node':(self.__hostname,self.__port),'firm':self.sign(transaction.encode('utf-8')).hex()}]
 		# Now send the encrypted hash to all other nodes implied in transaction for signing
 		for node in other_peers_implicated:
 			data = {
 				'command':'request_signature',
-				'data':(transaction,encrypted_hash)
+				'data':[transaction]
 			}
-			encrypted_hash = self.send(data,node)['data']
-			if encrypted_hash == 'no':
+			sign = self.send(data,node)['data']
+			if sign == 'no':
 				raise Signature_failure('One of the nodes refused to sign the transaction')
-		
+			final_transaction['signatures'] += [{'node':node,'firm':sign}]
+
 		data_to_send = {
 			'command':'new_transaction',
-			'data':({
-				'hash':encrypted_hash,
-				'transaction':transaction
-			})
+			'data':[final_transaction]
 		}
 		for i in self.__mining_nodes:
 			self.send(data_to_send,i)
@@ -109,10 +119,9 @@ class Node():
 
 	def sign_transaction(self,args):
 		transaction : str = args[0]
-		encrypted_transaction : str = args[1]
 		rs = input(f'Do you want to sign this transaction: {transaction} \n (y/n):')
 		if rs == 'y':
-			return {'data':self.sign(encrypted_transaction.encode('utf-8')).hex()}
+			return {'data':self.sign(transaction.encode('utf-8')).hex()}
 		else:
 			return {'data':'no'}
 
@@ -135,6 +144,7 @@ class Node():
 				pass
 
 	def stop(self):
+		print(f'Node on port {self.__port} stoped listening')
 		self.__stay_listening = False
 
 
