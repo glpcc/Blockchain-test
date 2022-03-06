@@ -62,8 +62,8 @@ class Node():
 
 	def request_blockchain(self):
 		chosen_peer = random.choice(self.__peers)
-		print(chosen_peer)
 		temp_blockchain = self.send({'command':'request_blockchain','data':(self.get_block_hash(self.__blockchain['blocks'][-1]))},tuple(chosen_peer))
+		#Here i would check if the blockchain is correct
 		print(temp_blockchain)
 
 	def encode_msg(self,data)-> bytes:

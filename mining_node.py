@@ -23,15 +23,14 @@ class MiningNode(Node):
 		self.__recent_transactions += [transaction]
 		if len(self.__recent_transactions) >= 10:
 			print(json.dumps(self.mine_block(), indent=4))
-
+		self.__recent_transactions = []
 		return 'ok'
 
 
 	def verify_transaction(self,transaction):
 		for signature in transaction['signatures']:
 			peer_pubkey = rsa.PublicKey.load_pkcs1(self.send({'command':'request_publickey','data':[]},tuple(signature['node'])).encode('utf-8'))
-			print(signature['firm'])
-			rsa.verify(transaction['transaction'].encode('utf-8'),signature['firm'].encode('utf-8'),peer_pubkey)
+			rsa.verify(transaction['transaction'].encode('utf-8'),bytes.fromhex(signature['firm']),peer_pubkey)
 
 	def mine_block(self) -> dict:
 		timestamp = str(time())
