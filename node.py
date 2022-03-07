@@ -5,8 +5,10 @@ import hashlib
 import json
 import random
 import socket
-
+from errors.incorrect_block import Incorrect_Block
+from errors.incorrect_blockchain import Incorrect_Blockchain
 from errors.signature_failure import Signature_failure
+
 HEADER_LENGTH = 10
 
 class Node():
@@ -17,6 +19,7 @@ class Node():
 		self.__peer_server = ('localhost',4000)
 		self.__peers : list[tuple[str,int]] = []
 		self.__mining_nodes : list[tuple[str,int]] = []
+		self.__mining_difficulty = 4
 		# here you could ask the peers for other peers
 		try:
 			if try_peers:
@@ -30,15 +33,19 @@ class Node():
 					'prev_block_hash': '8cf2283ad6ef0a3266059b418a73f8479338233ea2c4bcd3c1f51c39f13ae7dc',
 					'timestamp': 1645553097,
 					'merkle_tree_hash':'9ca54f1c7764f74c1a1b7b75e2f92726a3506d42380e37310788f5b1721684e0',
-					'extra_stuff': '0000000000',
+					'extra_stuff': 25241,
+					'transactions':[]
 				},
 			]
 
 		}
+		self.request_blockchain()
+
 		self.__msg_commands = {
 			'request_blockchain':self.send_blockchain,
 			'request_signature': self.sign_transaction,
 			'request_publickey': self.send_publickey,
+			'new_block':self.add_new_block
 		}
 		
 		# Generate public key and private key for validating transactions
@@ -50,21 +57,97 @@ class Node():
 
 
 	def get_block_hash(self,block: dict):
-		return hashlib.sha256((block['prev_block_hash']+ str(block['timestamp']) + block['merkle_tree_hash'] + str(block['extra_stuff'])).encode('utf-8')).hexdigest()
+		return hashlib.sha256(( str(block['timestamp'])  + block['merkle_tree_hash'] + block['prev_block_hash'] + str(block['extra_stuff'])).encode('utf-8')).hexdigest()
 
 	def send_blockchain(self,args):
-		block_header_hash = args[0]
-		for i in range(len(self.__blockchain['blocks'])):
-			if self.get_block_hash(self.__blockchain['blocks'][i]) == block_header_hash:
-				print(i)
-				return {'blocks': self.__blockchain['blocks'][i+1:]}
 		return self.__blockchain
 
 	def request_blockchain(self):
-		chosen_peer = random.choice(self.__peers)
-		temp_blockchain = self.send({'command':'request_blockchain','data':(self.get_block_hash(self.__blockchain['blocks'][-1]))},tuple(chosen_peer))
-		#Here i would check if the blockchain is correct
-		print(temp_blockchain)
+		if len(self.__peers) > 0:
+			chosen_peer = random.choice(self.__peers)
+			print(chosen_peer)
+			temp_blockchain = self.send({'command':'request_blockchain','data':[]},tuple(chosen_peer))
+			#Here i check if the blockchain is correct
+			
+			if len(temp_blockchain['blocks']) > 0:
+				print('hey')
+				founded = False
+				while not founded:
+					try:
+						self.verify_blockchain(temp_blockchain)
+						print(json.dumps(temp_blockchain, indent=4))
+						print('Foundeeeed')
+						founded = True
+						self.__blockchain = temp_blockchain
+					except Exception as e:
+						print('Mala blockchain')
+						chosen_peer = random.choice(self.__peers)
+						temp_blockchain = self.send({'command':'request_blockchain','data':[]},tuple(chosen_peer))
+
+	def add_new_block(self,args):
+		block = args[0]
+		try:
+			self.verify_block(block,verify_transactions=True,check_mktree=True)
+			self.__blockchain['blocks'] += [block]
+			return 'ok'
+		except Incorrect_Block or Incorrect_Blockchain or rsa.VerificationError:
+			print('Erroooor')
+			return 'invalid_block'
+
+
+	def verify_transaction(self,transaction):
+		for signature in transaction['signatures']:
+			if signature['node'] == [self.__hostname,self.__port]:
+				rsa.verify(transaction['transaction'].encode('utf-8'),bytes.fromhex(signature['firm']),self.__public_key)
+			else:
+				peer_pubkey = rsa.PublicKey.load_pkcs1(self.send({'command':'request_publickey','data':[]},tuple(signature['node'])).encode('utf-8'))
+				rsa.verify(transaction['transaction'].encode('utf-8'),bytes.fromhex(signature['firm']),peer_pubkey)
+
+
+	def merkle_tree(self,transactions):
+
+		# This will make a merkle tree hash of thre transactions
+		transaction_hashes = []
+		for i in transactions:
+			transaction_hashes += [i['hash']]
+		
+		while len(transaction_hashes) > 1:
+			new_t_hashes = []
+			for i in range(0,len(transaction_hashes),2):
+				try:
+					new_t_hashes += [hashlib.sha256((transaction_hashes[i]+transaction_hashes[i+1]).encode('utf-8')).hexdigest()]
+				except IndexError:
+					new_t_hashes += [transaction_hashes[i]]			
+			transaction_hashes = new_t_hashes
+		return transaction_hashes[0]
+
+	
+	def verify_blockchain(self,blockchain):
+		if len(blockchain['blocks']) > 1:
+			for i in range(1,len(blockchain['blocks'])):
+				if blockchain['blocks'][i]['prev_block_hash'] != self.get_block_hash(blockchain['blocks'][i-1]):
+					raise Incorrect_Blockchain
+				else:
+					self.verify_block(blockchain['blocks'][i])
+		else:
+			if blockchain['blocks'][0]['prev_block_hash'] != '8cf2283ad6ef0a3266059b418a73f8479338233ea2c4bcd3c1f51c39f13ae7dc':
+				raise Incorrect_Blockchain
+			else:
+				self.verify_block(blockchain['blocks'][0])
+
+	
+	def verify_block(self,block,check_mktree: bool = False,verify_transactions: bool = False,verify_block_hash: bool = True):
+		if check_mktree:
+			if self.merkle_tree(block['transactions']) != block['merkle_tree_hash']:
+				raise Incorrect_Block
+		if verify_transactions:
+			for transaction in block['transactions']:
+				self.verify_transaction(transaction)
+		if verify_block_hash:
+			if self.get_block_hash(block)[:self.__mining_difficulty] != '0'*self.__mining_difficulty:
+				raise Incorrect_Block
+
+
 
 	def encode_msg(self,data)-> bytes:
 		encoded_data = json.dumps(data)
