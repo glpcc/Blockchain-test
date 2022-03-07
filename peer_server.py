@@ -19,7 +19,9 @@ class Peer_server():
 		return header.encode('utf-8') + encoded_data.encode('utf-8')
 	
 	def listen(self):
-		
+		'''
+            Start listening for other connections until stop() is called and timeout occurs
+        '''
 		s = socket.socket()
 		s.bind(('', self.__port))
 		s.listen(5)
