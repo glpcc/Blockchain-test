@@ -1,43 +1,29 @@
-# TESTING OF FUNCTIONALITIES IN LOCALHOST
-# MINING NODES STORING AND SENDING BY THE PEER SERVER STILL HAS TO BE IMPLEMENTED
 
-from mining_node import MiningNode
-from node import Node
-import threading
-import time
-from peer_server import Peer_server
-import json
+from demo_controler import Demo_Controller
 
 
-server = Peer_server()
+cont = Demo_Controller()
 
-threading.Thread(target=server.listen).start()
-server.miners_list = [('localhost',6000)]
-time.sleep(1)
-
-miner = MiningNode('localhost',6000)
-threading.Thread(target=miner.listen).start()
-node1 = Node()
-threading.Thread(target=node1.listen).start()
-node2 = Node('localhost',5000)
-threading.Thread(target=node2.listen).start()
-node3 = Node('localhost',5005)
-threading.Thread(target=node3.listen).start()
-node1.get_peers()
-node2.get_peers()
-miner.get_peers()
-
-print(miner.peers)
-for i in range(10):
-	node1.new_transaction([('localhost',5000)],f'Transaccion numero {i}')
-
-node4 = Node('localhost',4044)
-print(json.dumps(node4.blockchain, indent=4))
-
-
-node1.stop()
-node2.stop()
-server.stop()
-miner.stop()
-
-
+running = True
+options = 'Press a number for one of the next actions\n 0 -> End Demo \n 1 -> Add New Node \n 2 -> Add new miner \n 3 -> Make new transaction \n 4 -> Mine new block \n 5 -> Show blockchain stored on a certain node'
+while running:
+    print(options)
+    r = input('Select your option: ')
+    if r == '0':
+        cont.stop_all()
+        running = False
+    elif r == '1':
+        port = input('Select a port for the Node: ')
+        cont.add_node(int(port))
+    elif r == '2':
+        port = input('Select a port for the Miner: ')
+        cont.add_miner(int(port))
+    elif r == '3':
+        nodes_indexes = input('Introduce the index of the nodes involved separated with comas: ').split(',')
+        transaction = input('Introduce the content of the transaction')
+        cont.create_new_transction([int(i) for i in nodes_indexes],transaction)
+    elif r == '4':
+        cont.mine_block()
+    elif r == '5': 
+        n_index = int(input('Introduce the index of the node: '))
+        cont.show_blockchain(n_index)

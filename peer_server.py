@@ -33,8 +33,14 @@ class Peer_server():
 				msg = c.recv(msg_lenght)
 				msg = json.loads(msg)
 				if msg['command'] == 'request_peers':
-					if not msg['sender'] in self.__node_list:
-						self.__node_list += [msg['sender']]
+					# Depending if its a miner or a simple node it adds them in 
+					# their corresponding list if they are not alredy in there
+					if msg['data'][0] == 'miner':
+						if not msg['sender'] in self.__miners_list:
+							self.__miners_list += [msg['sender']]
+					elif msg['data'][0] == 'node':
+						if not msg['sender'] in self.__node_list:
+							self.__node_list += [msg['sender']]
 					c.send(self.encode_msg({'data':(self.__miners_list,self.__node_list)}))
 				c.close()
 			except socket.timeout:
@@ -46,7 +52,7 @@ class Peer_server():
 	@property
 	def miners_list(self):
 		return self.__miners_list
-	
-	@miners_list.setter
-	def miners_list(self,l):
-		self.__miners_list = l
+		
+	@property
+	def port(self):
+		return self.__port

@@ -1,11 +1,9 @@
 from __future__ import annotations
-from numpy import block
 import rsa
 import hashlib
 import json
 import random
 import socket
-import typing
 from errors.incorrect_block import Incorrect_Block
 from errors.incorrect_blockchain import Incorrect_Blockchain
 from errors.signature_failure import Signature_failure
@@ -29,7 +27,7 @@ class Node():
         self.__peers: list[tuple[str, int]] = []
         self.__mining_nodes: list[tuple[str, int]] = []
         # Sets mining dificulty for know it is constant
-        self.__mining_difficulty = 4
+        self.__mining_difficulty = 6
         # Asks the peer server for the peer list
         try:
             if try_peers:
@@ -46,7 +44,7 @@ class Node():
                     'prev_block_hash': '8cf2283ad6ef0a3266059b418a73f8479338233ea2c4bcd3c1f51c39f13ae7dc',
                     'timestamp': 1645553097,
                     'merkle_tree_hash': '9ca54f1c7764f74c1a1b7b75e2f92726a3506d42380e37310788f5b1721684e0',
-                    'extra_stuff': 25241,
+                    'extra_stuff': 8437041,
                     'transactions': []
                 },
             ]
@@ -59,10 +57,21 @@ class Node():
             'request_blockchain': self.send_blockchain,
             'request_signature': self.sign_transaction,
             'request_publickey': self.send_publickey,
-            'new_block': self.add_new_block
+            'new_block': self.add_new_block,
+            'request_peers': self.send_peers
         }
         # Generate public key and private key for validating transactions
         self.__public_key, self.__private_key = rsa.newkeys(512)
+
+    def send_peers(self,args):
+        peer = args[0]
+        if not peer in self.__peers and not peer in self.__mining_nodes:
+            if args[1] == 'miner':
+                self.__mining_nodes += [peer]
+            elif args[1] == 'node':
+                self.__peers += [peer]
+
+        return {'data':(self.__mining_nodes,self.__peers)}
 
     def send_publickey(self, args) -> str:
         '''
@@ -114,6 +123,8 @@ class Node():
         '''
         block = args[0]
         try:
+            if block['prev_block_hash'] != self.get_block_hash(self.blockchain['blocks'][-1]):
+                raise Incorrect_Blockchain
             self.verify_block(
                 block, verify_transactions=True, check_mktree=True)
             self.__blockchain['blocks'] += [block]
@@ -260,25 +271,42 @@ class Node():
         }
         # Send the transaction to al the mining nodes
         for i in self.__mining_nodes:
-            self.send(data_to_send, i)
-
+            self.send(data_to_send, tuple(i))
+        print('finished transaction')
+    
     def get_peers(self)-> None:
         '''
             Gets peers and mining nodes from the peer server if it doesn't have them alredy
         '''
-        mining_nodes, peers = self.send({'command': 'request_peers', 'data': '', 'sender': (self.__hostname, self.__port)}, self.__peer_server)['data']
+        type_of_node = 'node' if type(self) == Node else 'miner' 
+        mining_nodes, peers = self.send({'command': 'request_peers', 'data': [type_of_node], 'sender': (self.__hostname, self.__port)}, self.__peer_server)['data']
         self.__peers += [i for i in peers if not i in self.__peers and i !=
                          [self.__hostname, self.__port]]
         self.__mining_nodes += [tuple(i)
-                                for i in mining_nodes if not tuple(i) in self.__mining_nodes]
+                                for i in mining_nodes if not tuple(i) in self.__mining_nodes and i !=
+                         [self.__hostname, self.__port]]
 
+        # Now it requests other peers for more peers
+        for peer in self.__peers:
+            mining_nodes, peers = self.send({'command': 'request_peers', 'data': [(self.__hostname, self.__port),type_of_node]},tuple(peer))['data']
+            self.__peers += [i for i in peers if not i in self.__peers and i !=
+                         [self.__hostname, self.__port]]
+            self.__mining_nodes += [tuple(i) for i in mining_nodes if not tuple(i) in self.__mining_nodes and i !=
+                         [self.__hostname, self.__port]]
+        for peer in self.__mining_nodes:
+            mining_nodes, peers = self.send({'command': 'request_peers', 'data': [(self.__hostname, self.__port),type_of_node]},tuple(peer))['data']
+            self.__peers += [i for i in peers if not i in self.__peers and i !=
+                         [self.__hostname, self.__port]]
+            self.__mining_nodes += [tuple(i) for i in mining_nodes if not tuple(i) in self.__mining_nodes and i !=
+                         [self.__hostname, self.__port]]
+        
     def sign_transaction(self, args)-> dict:
         '''
             Asks the Node user if it wants to sign the incoming transaction
         '''
         transaction: str = args[0]
         rs = input(
-            f'Do you want to sign this transaction: {transaction} \n (y/n):')
+            f'Im node on port {self.__port},Do you want to sign this transaction: {transaction} \n (y/n):')
         if rs == 'y':
             return {'data': self.sign(transaction.encode('utf-8')).hex()}
         else:
@@ -313,6 +341,14 @@ class Node():
         print(f'Node on port {self.__port} stoped listening')
         self.__stay_listening = False
 
+
+    @property
+    def port(self):
+        return self.__port
+
+    @property
+    def hostname(self):
+        return self.__hostname
     @property
     def peers(self):
         return self.__peers
