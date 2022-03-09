@@ -3,7 +3,7 @@ from mining_node import MiningNode
 from node import Node
 from peer_server import Peer_server
 import threading
-
+import time
 
 def foo(x):
 	x.mine_block
@@ -30,12 +30,15 @@ class Demo_Controller():
 			print(f'Port number: {port} is alredy in use, retry with another one')
 	
 	def create_new_transction(self,nodes_involved_indexes: list[int],transaction_message: str):
-		if self.nodes != []:
-			nodes_involved = [(i.hostname,i.port) for i in [self.nodes[j] for j in nodes_involved_indexes[1:]]]
-			print(f'hola: {nodes_involved}')
-			self.nodes[nodes_involved_indexes[0]].new_transaction(nodes_involved,transaction_message)
-		else:
-			print('You havent made any nodes')
+		try:
+			if self.nodes != []:
+				nodes_involved = [(i.hostname,i.port) for i in [self.nodes[j] for j in nodes_involved_indexes[1:]]]
+				print(f'hola: {nodes_involved}')
+				self.nodes[nodes_involved_indexes[0]].new_transaction(nodes_involved,transaction_message)
+			else:
+				print('You havent made any nodes')
+		except IndexError:
+			print('There is no node on one of the indexes indicated')
 	def mine_block(self):
 		'''	
 			This will force the mining of a new block might lead to problems with race conditions if mining dificulty is below 6
@@ -45,7 +48,7 @@ class Demo_Controller():
 			for i in self.miners:
 				mining_threads += [threading.Thread(target=i.mine_block)]
 				mining_threads[-1].start()
-			
+				time.sleep(0.1)
 			for i in mining_threads:
 				i.join()
 		else:
