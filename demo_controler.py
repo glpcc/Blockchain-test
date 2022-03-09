@@ -30,27 +30,35 @@ class Demo_Controller():
 			print(f'Port number: {port} is alredy in use, retry with another one')
 	
 	def create_new_transction(self,nodes_involved_indexes: list[int],transaction_message: str):
-		nodes_involved = [(i.hostname,i.port) for i in [self.nodes[j] for j in nodes_involved_indexes[1:]]]
-		print(f'hola: {nodes_involved}')
-		self.nodes[nodes_involved_indexes[0]].new_transaction(nodes_involved,transaction_message)
-
+		if self.nodes != []:
+			nodes_involved = [(i.hostname,i.port) for i in [self.nodes[j] for j in nodes_involved_indexes[1:]]]
+			print(f'hola: {nodes_involved}')
+			self.nodes[nodes_involved_indexes[0]].new_transaction(nodes_involved,transaction_message)
+		else:
+			print('You havent made any nodes')
 	def mine_block(self):
 		'''	
 			This will force the mining of a new block might lead to problems with race conditions if mining dificulty is below 6
 		'''
-		mining_threads = []
-		for i in self.miners:
-			mining_threads += [threading.Thread(target=i.mine_block)]
-			mining_threads[-1].start()
-		
-		for i in mining_threads:
-			i.join()
+		if self.miners != []:
+			mining_threads = []
+			for i in self.miners:
+				mining_threads += [threading.Thread(target=i.mine_block)]
+				mining_threads[-1].start()
+			
+			for i in mining_threads:
+				i.join()
+		else:
+			print('You haven`t created any nodes')
 		
 
 		
 	
 	def show_blockchain(self,node_index : int = 0):
-		print(json.dumps(self.nodes[node_index].blockchain, indent=4))
+		try:
+			print(json.dumps(self.nodes[node_index].blockchain, indent=4))
+		except IndexError:
+			print(f'Theres no node at position {node_index}')
 
 	def stop_all(self):
 		self.peer_server.stop()
